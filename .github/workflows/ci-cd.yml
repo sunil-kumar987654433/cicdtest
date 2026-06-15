@@ -48,17 +48,24 @@ jobs:
         # 2. GitHub Runner ke andar hi Docker Image Build karein
         docker build -t fastapi-app:latest .
         
-        # 3. Built Image ko tar compressed file me save karein taaki EC2 par transfer kiya ja sake
+        # 3. Built Image ko compressed tar file me save karein
         docker save fastapi-app:latest | gzip > fastapi-app.tar.gz
         
-        # 4. Target folder ensure karein aur compressed image ko EC2 par scp karein
+        # 4. Target folder ensure karein aur files copy karein
         ssh -o StrictHostKeyChecking=no -i private_key.pem ${USER}@${HOST} "mkdir -p /home/${USER}/app"
         scp -o StrictHostKeyChecking=no -i private_key.pem fastapi-app.tar.gz ${USER}@${HOST}:/home/${USER}/app/
         
-        # 5. EC2 par remote deployment commands chalayein
+        # 5. Deployment Script EC2 par execute karein
         ssh -o StrictHostKeyChecking=no -i private_key.pem ${USER}@${HOST} << 'EOF'
         set -e
         cd /home/$(whoami)/app
+        
+        # [CRITICAL FIX]: Purani Systemd service jo port 8000 rok rahi hai use stop aur disable karein
+        sudo systemctl stop fastapi-app.service || true
+        sudo systemctl disable fastapi-app.service || true
+        
+        # Agar koi process abhi bhi port 8000 par zinda hai, use force kill karein
+        sudo fuser -k 8000/tcp || true
         
         # Purane chal rahe container ko stop aur remove karein (agar koi ho)
         docker stop fastapi-container || true
@@ -70,15 +77,15 @@ jobs:
         # Naya Docker container background (-d) me Port 8000 par run karein
         docker run -d --name fastapi-container -p 8000:8000 --restart always fastapi-app:latest
         
-        # Cleanup: raw tar file ko remove karein memory bachane ke liye
+        # Cleanup compressed tar file
         rm -f fastapi-app.tar.gz
         
-        # Status verify karein log output ke liye
-        sleep 2
+        # Status check
+        sleep 3
         docker ps | grep fastapi-container
         echo "✅ Docker Deployment completed successfully!"
         EOF
         
-        # 6. GitHub Actions workspace cleanup karein
+        # 6. Local Workspace clean karein
         rm -f private_key.pem
         rm -f fastapi-app.tar.gz
