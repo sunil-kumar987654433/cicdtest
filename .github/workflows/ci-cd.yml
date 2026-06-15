@@ -38,22 +38,19 @@ jobs:
     
     - name: Deploy to EC2
       env:
-        SSH_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }} # Aapka exact secret name
+        SSH_KEY_B64: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
         HOST: ${{ secrets.EC2_HOST }}
         USER: ${{ secrets.EC2_USER }}
       run: |
-        # 1. Single quotes use karne se multi-line key bina formatting toote file me save hogi
-        cat << 'KEY_EOF' > private_key.pem
-        $SSH_KEY
-        KEY_EOF
-        
+        # 1. Base64 string ko perfect format private key me decode karein
+        echo "$SSH_KEY_B64" | base64 -d > private_key.pem
         chmod 600 private_key.pem
         
         # 2. Target directory ensure karein aur files copy karein
         ssh -o StrictHostKeyChecking=no -i private_key.pem ${USER}@${HOST} "mkdir -p /home/${USER}/app"
         scp -o StrictHostKeyChecking=no -i private_key.pem -r ./* ${USER}@${HOST}:/home/${USER}/app/
         
-        # 3. Deployment Script EC2 par execute karein (Bina leading spaces ke)
+        # 3. Deployment Script EC2 par execute karein
         ssh -o StrictHostKeyChecking=no -i private_key.pem ${USER}@${HOST} << 'EOF'
         set -e
         CURRENT_USER=$(whoami)
@@ -101,5 +98,5 @@ jobs:
         echo "✅ Deployment completed successfully!"
         EOF
         
-        # 4. Local key cleanly remove karein
+        # 4. Local runner file clean karein
         rm -f private_key.pem
