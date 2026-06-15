@@ -38,16 +38,22 @@ jobs:
     
     - name: Deploy to EC2
       env:
-        SSH_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+        SSH_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }} # Aapka exact secret name
         HOST: ${{ secrets.EC2_HOST }}
         USER: ${{ secrets.EC2_USER }}
       run: |
-        echo "$SSH_KEY" > private_key.pem
+        # 1. Single quotes use karne se multi-line key bina formatting toote file me save hogi
+        cat << 'KEY_EOF' > private_key.pem
+        $SSH_KEY
+        KEY_EOF
+        
         chmod 600 private_key.pem
         
+        # 2. Target directory ensure karein aur files copy karein
         ssh -o StrictHostKeyChecking=no -i private_key.pem ${USER}@${HOST} "mkdir -p /home/${USER}/app"
         scp -o StrictHostKeyChecking=no -i private_key.pem -r ./* ${USER}@${HOST}:/home/${USER}/app/
         
+        # 3. Deployment Script EC2 par execute karein (Bina leading spaces ke)
         ssh -o StrictHostKeyChecking=no -i private_key.pem ${USER}@${HOST} << 'EOF'
         set -e
         CURRENT_USER=$(whoami)
@@ -91,8 +97,9 @@ jobs:
         sudo systemctl start fastapi-app.service
         
         sleep 3
-        sudo systemctl status fastapi-app.service --no-pager || echo "⚠️ Service state fluctuating"
+        sudo systemctl status fastapi-app.service --no-pager || echo "⚠️ Service fluctuating"
         echo "✅ Deployment completed successfully!"
         EOF
         
+        # 4. Local key cleanly remove karein
         rm -f private_key.pem
