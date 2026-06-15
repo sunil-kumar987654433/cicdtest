@@ -23,6 +23,8 @@ def register_middleware(app: FastAPI):
     app.add_middleware(
         TrustedHostMiddleware,
         allowed_hosts = [
+            "begining.fun",
+            "www.begining.fun",
             "13.127.108.22",
             "localhost",
             "127.0.0.1"

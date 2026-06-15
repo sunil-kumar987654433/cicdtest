@@ -3,3 +3,4 @@ procedure step of cicd
 .git
 __pycache__
 venv/
+oldcicd

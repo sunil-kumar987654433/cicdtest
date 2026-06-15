@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: CI/CD Docker Pipeline
 
 on:
   push:
@@ -9,7 +9,6 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
     steps:
     - uses: actions/checkout@v4
     
@@ -27,7 +26,7 @@ jobs:
     - name: Run tests
       run: |
         pytest tests/ -v --cov=app --cov-report=term-missing || echo "No tests found, skipping..."
-    
+
   deploy:
     needs: test
     runs-on: ubuntu-latest
@@ -36,67 +35,50 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Deploy to EC2
+    - name: Deploy via Docker to EC2
       env:
         SSH_KEY_B64: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
         HOST: ${{ secrets.EC2_HOST }}
         USER: ${{ secrets.EC2_USER }}
       run: |
-        # 1. Base64 string ko perfect format private key me decode karein
+        # 1. Private key regenerate aur permissions set karein
         echo "$SSH_KEY_B64" | base64 -d > private_key.pem
         chmod 600 private_key.pem
         
-        # 2. Target directory ensure karein aur files copy karein
-        ssh -o StrictHostKeyChecking=no -i private_key.pem ${USER}@${HOST} "mkdir -p /home/${USER}/app"
-        scp -o StrictHostKeyChecking=no -i private_key.pem -r ./* ${USER}@${HOST}:/home/${USER}/app/
+        # 2. GitHub Runner ke andar hi Docker Image Build karein
+        docker build -t fastapi-app:latest .
         
-        # 3. Deployment Script EC2 par execute karein
+        # 3. Built Image ko tar compressed file me save karein taaki EC2 par transfer kiya ja sake
+        docker save fastapi-app:latest | gzip > fastapi-app.tar.gz
+        
+        # 4. Target folder ensure karein aur compressed image ko EC2 par scp karein
+        ssh -o StrictHostKeyChecking=no -i private_key.pem ${USER}@${HOST} "mkdir -p /home/${USER}/app"
+        scp -o StrictHostKeyChecking=no -i private_key.pem fastapi-app.tar.gz ${USER}@${HOST}:/home/${USER}/app/
+        
+        # 5. EC2 par remote deployment commands chalayein
         ssh -o StrictHostKeyChecking=no -i private_key.pem ${USER}@${HOST} << 'EOF'
         set -e
-        CURRENT_USER=$(whoami)
-        cd /home/$CURRENT_USER/app
+        cd /home/$(whoami)/app
         
-        if ! command -v pip3 &> /dev/null; then
-          echo "Installing Python pip..."
-          sudo apt-get update
-          sudo apt-get install -y python3-pip python3-venv
-        fi
+        # Purane chal rahe container ko stop aur remove karein (agar koi ho)
+        docker stop fastapi-container || true
+        docker rm fastapi-container || true
         
-        python3 -m venv venv || true
-        source venv/bin/activate
+        # Nayi image ko Docker me load karein
+        gunzip -c fastapi-app.tar.gz | docker load
         
-        pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install uvicorn
+        # Naya Docker container background (-d) me Port 8000 par run karein
+        docker run -d --name fastapi-container -p 8000:8000 --restart always fastapi-app:latest
         
-        if [ ! -f /etc/systemd/system/fastapi-app.service ]; then
-          echo "Creating systemd service..."
-          echo "[Unit]" | sudo tee /etc/systemd/system/fastapi-app.service > /dev/null
-          echo "Description=FastAPI Application" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
-          echo "After=network.target" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
-          echo "" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
-          echo "[Service]" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
-          echo "Type=simple" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
-          echo "User=$CURRENT_USER" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
-          echo "WorkingDirectory=/home/$CURRENT_USER/app" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
-          echo "Environment=\"PATH=/home/$CURRENT_USER/app/venv/bin\"" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
-          echo "ExecStart=/home/$CURRENT_USER/app/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
-          echo "Restart=always" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
-          echo "RestartSec=3" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
-          echo "" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
-          echo "[Install]" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
-          echo "WantedBy=multi-user.target" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
-        fi
+        # Cleanup: raw tar file ko remove karein memory bachane ke liye
+        rm -f fastapi-app.tar.gz
         
-        sudo systemctl stop fastapi-app.service || true
-        sudo systemctl daemon-reload
-        sudo systemctl enable fastapi-app.service
-        sudo systemctl start fastapi-app.service
-        
-        sleep 3
-        sudo systemctl status fastapi-app.service --no-pager || echo "⚠️ Service fluctuating"
-        echo "✅ Deployment completed successfully!"
+        # Status verify karein log output ke liye
+        sleep 2
+        docker ps | grep fastapi-container
+        echo "✅ Docker Deployment completed successfully!"
         EOF
         
-        # 4. Local runner file clean karein
+        # 6. GitHub Actions workspace cleanup karein
         rm -f private_key.pem
+        rm -f fastapi-app.tar.gz
