@@ -1,0 +1,5 @@
+procedure step of cicd
+.venv
+.git
+__pycache__
+venv/
