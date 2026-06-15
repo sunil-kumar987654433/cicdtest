@@ -11,18 +11,18 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.13.13'
+        python-version: '3.13.x'
     
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pytest pytest-cov httpx
+        pip install pytest pytest-cov httpx uvicorn
     
     - name: Run tests
       run: |
@@ -34,27 +34,30 @@ jobs:
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Deploy to EC2
       env:
-        PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
         HOST: ${{ secrets.EC2_HOST }}
-        USER: ${{ secrets.EC2_USER }}
+        USER: ${{ secrets.EC2_USERNAME }}
       run: |
-        echo "$PRIVATE_KEY" > cicdtest.pem
+        # 1. Multi-line Private Key ko bina format kharab kiye file me write karein
+        cat << 'EOF' > cicdtest.pem
+        ${{ secrets.EC2_SSH_KEY }}
+        EOF
+        
         chmod 600 cicdtest.pem
         
-        # Copy files to EC2
+        # 2. Target directory ensure karein aur files copy karein
+        ssh -o StrictHostKeyChecking=no -i cicdtest.pem ${USER}@${HOST} "mkdir -p /home/${USER}/app"
         scp -o StrictHostKeyChecking=no -i cicdtest.pem -r ./* ${USER}@${HOST}:/home/${USER}/app/
         
-        # Run deployment script on EC2
-        ssh -o StrictHostKeyChecking=no -i cicdtest.pem ${USER}@${HOST} << 'EOF'
+        # 3. Deployment Script EC2 par chalayein (DEPLOY_SCRIPT delimiter ke sath)
+        ssh -o StrictHostKeyChecking=no -i cicdtest.pem ${USER}@${HOST} << 'DEPLOY_SCRIPT'
           set -e
           
-          # Create app directory
-          mkdir -p /home/ubuntu/app
-          cd /home/ubuntu/app
+          CURRENT_USER=$(whoami)
+          cd /home/$CURRENT_USER/app
           
           # Install Python and pip if not present
           if ! command -v pip3 &> /dev/null; then
@@ -67,9 +70,10 @@ jobs:
           python3 -m venv venv || true
           source venv/bin/activate
           
-          # Install/Update dependencies
+          # Dependencies update karein
           pip install --upgrade pip
           pip install -r requirements.txt
+          pip install uvicorn
           
           # Create systemd service if it doesn't exist
           if [ ! -f /etc/systemd/system/fastapi-app.service ]; then
@@ -80,10 +84,10 @@ jobs:
             echo "" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
             echo "[Service]" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
             echo "Type=simple" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
-            echo "User=ubuntu" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
-            echo "WorkingDirectory=/home/ubuntu/app" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
-            echo "Environment=\"PATH=/home/ubuntu/app/venv/bin\"" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
-            echo "ExecStart=/home/ubuntu/app/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
+            echo "User=$CURRENT_USER" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
+            echo "WorkingDirectory=/home/$CURRENT_USER/app" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
+            echo "Environment=\"PATH=/home/$CURRENT_USER/app/venv/bin\"" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
+            echo "ExecStart=/home/$CURRENT_USER/app/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
             echo "Restart=always" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
             echo "RestartSec=3" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
             echo "" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
@@ -91,21 +95,22 @@ jobs:
             echo "WantedBy=multi-user.target" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
           fi
           
-          # Stop existing service (if running)
-          sudo systemctl stop fastapi-app || true
+          # Old running service ko stop karein
+          sudo systemctl stop fastapi-app.service || true
           
           # Reload, enable and start the service
           sudo systemctl daemon-reload
-          sudo systemctl enable fastapi-app
-          sudo systemctl start fastapi-app
+          sudo systemctl enable fastapi-app.service
+          sudo systemctl start fastapi-app.service
           
-          # Wait a moment for service to start
+          # Wait for service stabilization
           sleep 2
           
-          # Check status
-          sudo systemctl status fastapi-app --no-pager
+          # Status print karein pipeline logs ke liye
+          sudo systemctl status fastapi-app.service --no-pager
           
           echo "✅ Deployment completed successfully!"
-        EOF
+DEPLOY_SCRIPT
         
+        # 4. Local key ko clean karein (Aakhiri command perfectly aligned h)
         rm -f cicdtest.pem
