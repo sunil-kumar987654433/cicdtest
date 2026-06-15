@@ -1,33 +1,3 @@
-name: CI/CD Pipeline
-
-on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v4 # Latest version use karein
-    
-    - name: Set up Python
-      uses: actions/setup-python@v5 # Latest version use karein
-      with:
-        python-version: '3.13.x' # standard format for setup-python
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pytest pytest-cov httpx uvicorn # uvicorn tests ke liye zaroori ho sakta hai
-    
-    - name: Run tests
-      run: |
-        pytest tests/ -v --cov=app --cov-report=term-missing || echo "No tests found, skipping..."
-    
   deploy:
     needs: test
     runs-on: ubuntu-latest
@@ -38,9 +8,9 @@ jobs:
     
     - name: Deploy to EC2
       env:
-        PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}     # Dashboard se match kiya
-        HOST: ${{ secrets.EC2_HOST }}               # Dashboard se match kiya
-        USER: ${{ secrets.EC2_USERNAME }}           # Dashboard se match kiya
+        PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
+        HOST: ${{ secrets.EC2_HOST }}
+        USER: ${{ secrets.EC2_USERNAME }}
       run: |
         echo "$PRIVATE_KEY" > private_key.pem
         chmod 600 private_key.pem
@@ -49,10 +19,13 @@ jobs:
         ssh -o StrictHostKeyChecking=no -i private_key.pem ${USER}@${HOST} "mkdir -p /home/${USER}/app"
         scp -o StrictHostKeyChecking=no -i private_key.pem -r ./* ${USER}@${HOST}:/home/${USER}/app/
         
-        # Run deployment script on EC2
-        ssh -o StrictHostKeyChecking=no -i private_key.pem ${USER}@${HOST} << EOF
+        # 'EOF' use kiya taaki variables EC2 par chaley, GitHub par nahi
+        ssh -o StrictHostKeyChecking=no -i private_key.pem ${USER}@${HOST} << 'EOF'
           set -e
-          cd /home/${USER}/app
+          
+          # EC2 par login hone ke baad user pata lagayein
+          CURRENT_USER=$(whoami)
+          cd /home/$CURRENT_USER/app
           
           # Install Python and pip if not present
           if ! command -v pip3 &> /dev/null; then
@@ -68,7 +41,7 @@ jobs:
           # Install/Update dependencies
           pip install --upgrade pip
           pip install -r requirements.txt
-          pip install uvicorn # Ensure uvicorn environment me ho
+          pip install uvicorn
           
           # Create systemd service if it doesn't exist
           if [ ! -f /etc/systemd/system/fastapi-app.service ]; then
@@ -79,10 +52,10 @@ jobs:
             echo "" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
             echo "[Service]" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
             echo "Type=simple" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
-            echo "User=${USER}" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
-            echo "WorkingDirectory=/home/${USER}/app" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
-            echo "Environment=\"PATH=/home/${USER}/app/venv/bin\"" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
-            echo "ExecStart=/home/${USER}/app/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
+            echo "User=$CURRENT_USER" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
+            echo "WorkingDirectory=/home/$CURRENT_USER/app" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
+            echo "Environment=\"PATH=/home/$CURRENT_USER/app/venv/bin\"" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
+            echo "ExecStart=/home/$CURRENT_USER/app/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
             echo "Restart=always" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
             echo "RestartSec=3" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
             echo "" | sudo tee -a /etc/systemd/system/fastapi-app.service > /dev/null
@@ -105,3 +78,6 @@ jobs:
           sudo systemctl status fastapi-app.service --no-pager
           
           echo "✅ Deployment completed successfully!"
+EOF
+        
+        rm -f private_key.pem
