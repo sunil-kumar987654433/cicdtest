@@ -1,9 +1,9 @@
 from fastapi import FastAPI
 from fastapi import Request
-from sqlalchemy import select
-from src.accounts.models import User
-from src.accounts.utils import JWT_TOKEN
-from src.db.database import async_session
+# from sqlalchemy import select
+# from src.accounts.models import User
+# from src.accounts.utils import JWT_TOKEN
+# from src.db.database import async_session
 import uuid
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
