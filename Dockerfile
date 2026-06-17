@@ -1,33 +1,24 @@
-# 1. Base Python image use karein
+# 1. Base Python image
 FROM python:3.13-slim
 
-# 2. System dependencies install karein (Required for building wheels like psycopg2)
+# 2. System dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    python3-dev \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
+    gcc python3-dev libpq-dev && rm -rf /var/lib/apt/lists/*
 
-# 3. Working directory set karein
-WORKDIR /code
+# 3. FIX: Working directory ko /app kiya
+WORKDIR /app
 
-# 4. Requirements copy karke optimize installation karein
-COPY ./requirements.txt /code/requirements.txt
+# 4. Requirements copy aur install
+COPY ./requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r /code/requirements.txt
+    pip install --no-cache-dir -r /app/requirements.txt
 
-# 5. Baaki saara project code copy karein
-COPY . /code
+# 5. FIX: Saara project code /app me copy kiya
+COPY . /app
 
-# 6. Entrypoint script ko executable banayein
-RUN chmod +x /code/entrypoint.sh
+# 6. Entrypoint permissions
+RUN chmod +x /app/entrypoint.sh
 
-# 7. Port 8000 expose karein (Sirf web app ke liye kaam aayega)
 EXPOSE 8000
-
-# 8. Script ko main entrypoint set karein
-ENTRYPOINT ["/code/entrypoint.sh"]
-
-# Default command agar docker-compose override na kare
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["web"]
-
