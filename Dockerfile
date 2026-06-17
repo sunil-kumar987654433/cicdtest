@@ -1,21 +1,33 @@
 # 1. Base Python image use karein
-FROM python:3.11-slim
+FROM python:3.13-slim
 
-# 2. Working directory set karein
+# 2. System dependencies install karein (Required for building wheels like psycopg2)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    python3-dev \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# 3. Working directory set karein
 WORKDIR /code
 
-# 3. Pehle requirements copy karein (Docker caching optimize karne ke liye)
+# 4. Requirements copy karke optimize installation karein
 COPY ./requirements.txt /code/requirements.txt
-
-# 4. Dependencies install karein
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r /code/requirements.txt
 
 # 5. Baaki saara project code copy karein
 COPY . /code
 
-# 6. Port 8000 expose karein
+# 6. Entrypoint script ko executable banayein
+RUN chmod +x /code/entrypoint.sh
+
+# 7. Port 8000 expose karein (Sirf web app ke liye kaam aayega)
 EXPOSE 8000
 
-# 7. FastAPI app run karne ki command
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 8. Script ko main entrypoint set karein
+ENTRYPOINT ["/code/entrypoint.sh"]
+
+# Default command agar docker-compose override na kare
+CMD ["web"]
+

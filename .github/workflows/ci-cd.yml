@@ -1,10 +1,10 @@
-name: CI/CD Docker Pipeline
+name: CI/CD Docker Compose Pipeline
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, masterone ] # Masterone branch setup config done
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, masterone ]
 
 jobs:
   test:
@@ -15,77 +15,78 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
+        python-version: '3.13'
     
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pytest pytest-cov httpx uvicorn
+        # pytest-mock dependency injection setup complete kiya
+        pip install pytest pytest-cov pytest-mock httpx uvicorn
     
     - name: Run tests
       run: |
-        pytest tests/ -v --cov=app --cov-report=term-missing || echo "No tests found, skipping..."
+        # --cov=app ko badalkar --cov=src kiya correct logging mapping ke liye
+        pytest tests/ -v --cov=src --cov-report=term-missing || echo "No tests found, skipping..."
 
   deploy:
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/masterone'
     
     steps:
     - uses: actions/checkout@v4
     
-    - name: Deploy via Docker to EC2
+    - name: Deploy via Docker Compose to EC2
       env:
         SSH_KEY_B64: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
         HOST: ${{ secrets.EC2_HOST }}
         USER: ${{ secrets.EC2_USER }}
       run: |
-        # 1. Private key regenerate aur permissions set karein
+        # 1. Private key decode aur secure permission file generate karein
         echo "$SSH_KEY_B64" | base64 -d > private_key.pem
         chmod 600 private_key.pem
         
-        # 2. GitHub Runner ke andar hi Docker Image Build karein
-        docker build -t fastapi-app:latest .
+        # [SAHI LAYER]: GitHub Secret se real .env file generate karein push karne se pehle
+        echo "${{ secrets.PROD_ENV }}" > .env
         
-        # 3. Built Image ko compressed tar file me save karein
-        docker save fastapi-app:latest | gzip > fastapi-app.tar.gz
-        
-        # 4. Target folder ensure karein aur files copy karein
+        # 2. Project directory target ensure karein aur files transfer karein
         ssh -o StrictHostKeyChecking=no -i private_key.pem ${USER}@${HOST} "mkdir -p /home/${USER}/app"
-        scp -o StrictHostKeyChecking=no -i private_key.pem fastapi-app.tar.gz ${USER}@${HOST}:/home/${USER}/app/
+        scp -o StrictHostKeyChecking=no -i private_key.pem -r ./* ${USER}@${HOST}:/home/${USER}/app/
         
-        # 5. Deployment Script EC2 par execute karein
+        # 3. Remote EC2 terminal par Docker Compose execute karein
         ssh -o StrictHostKeyChecking=no -i private_key.pem ${USER}@${HOST} << 'EOF'
         set -e
         cd /home/$(whoami)/app
         
-        # [CRITICAL FIX]: Purani Systemd service jo port 8000 rok rahi hai use stop aur disable karein
-        sudo systemctl stop fastapi-app.service || true
-        sudo systemctl disable fastapi-app.service || true
+        # Check karein agar docker-compose-plugin ya tool missing h to install karein
+        if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+          echo "Installing Docker Compose v2..."
+          sudo apt-get update && sudo apt-get install -y docker-compose-plugin
+        fi
         
-        # Agar koi process abhi bhi port 8000 par zinda hai, use force kill karein
-        sudo fuser -k 8000/tcp || true
-        
-        # Purane chal rahe container ko stop aur remove karein (agar koi ho)
+        # Purana individual floating container agar chal raha ho to clean karein
         docker stop fastapi-container || true
         docker rm fastapi-container || true
         
-        # Nayi image ko Docker me load karein
-        gunzip -c fastapi-app.tar.gz | docker load
+        # Port 8000 occupier clearing backup safety action
+        sudo fuser -k 8000/tcp || true
         
-        # Naya Docker container background (-d) me Port 8000 par run karein
-        docker run -d --name fastapi-container -p 8000:8000 --restart always fastapi-app:latest
+        # Docker compose container microservices framework deploy layer
+        if command -v docker-compose &> /dev/null; then
+          docker-compose down --remove-orphans
+          docker-compose up --build -d
+        else
+          docker compose down --remove-orphans
+          docker compose up --build -d
+        fi
         
-        # Cleanup compressed tar file
-        rm -f fastapi-app.tar.gz
-        
-        # Status check
-        sleep 3
-        docker ps | grep fastapi-container
-        echo "✅ Docker Deployment completed successfully!"
+        # Deployment verify snapshot
+        sleep 5
+        docker ps
+        echo "✅ Multi-Container Stack Deployed successfully!"
         EOF
         
-        # 6. Local Workspace clean karein
+        # 4. Workspace cleaner execution (Indentation corrected & .env cleaner added)
         rm -f private_key.pem
-        rm -f fastapi-app.tar.gz
+        rm -f .env
