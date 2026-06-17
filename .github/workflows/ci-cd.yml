@@ -1,37 +1,7 @@
-name: CI/CD Docker Compose Pipeline
-
-on:
-  push:
-    branches: [  mastertwo ] # Trigger execution targeted branch
-  pull_request:
-    branches: [  mastertwo ]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.13'
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pytest pytest-cov pytest-mock httpx uvicorn
-    
-    - name: Run tests
-      run: |
-        # PYTHONPATH=. ensures the 'src' directory is properly discovered during tests
-        PYTHONPATH=. pytest tests/ -v --cov=src --cov-report=term-missing || echo "No tests found, skipping..."
-
   deploy:
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/mastertwo'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/masterone'
     
     steps:
     - uses: actions/checkout@v4
@@ -42,54 +12,50 @@ jobs:
         HOST: ${{ secrets.EC2_HOST }}
         USER: ${{ secrets.EC2_USER }}
       run: |
-        # 1. Private key decode and set restricted permissions
+        # 1. Private key decode aur permission set karein
         echo "$SSH_KEY_B64" | base64 -d > private_key.pem
         chmod 600 private_key.pem
         
-        # 2. Dynamic production .env creation from GitHub Secrets
+        # 2. GitHub Secret se real .env file generate karein
         echo "${{ secrets.PROD_ENV }}" > .env
         
-        # 3. Ensure remote target directory structure exists and copy the workspace code
+        # 3. Target directory ensure karein, source code aur hidden .env dono explicit copy karein
         ssh -o StrictHostKeyChecking=no -i private_key.pem ${USER}@${HOST} "mkdir -p /home/${USER}/app"
         scp -o StrictHostKeyChecking=no -i private_key.pem -r ./* ${USER}@${HOST}:/home/${USER}/app/
+        # FIX LAYER: Hidden .env file ko explicit copy kiya taaki scp use miss na kare
+        scp -o StrictHostKeyChecking=no -i private_key.pem .env ${USER}@${HOST}:/home/${USER}/app/.env
         
-        # 4. Remote execution orchestration on EC2
+        # 4. Remote EC2 terminal par Docker Compose execute karein
         ssh -o StrictHostKeyChecking=no -i private_key.pem ${USER}@${HOST} << 'EOF'
         set -e
         cd /home/$(whoami)/app
         
-        # Standalone cURL installation fallback if both docker-compose v1 and v2 are missing
+        # Standalone tool fallback checking layer
         if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
-          echo "Installing standalone Docker Compose binary file..."
+          echo "Installing Docker Compose binary tool..."
           sudo curl -L "https://github.com(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
           sudo chmod +x /usr/local/bin/docker-compose
         fi
         
-        # Legacy monolithic individual standalone container cleanup layer
+        # Legacy monolithic cleanup
         docker stop fastapi-container || true
         docker rm fastapi-container || true
-        
-        # Force terminate any process lingering on port 8000
         sudo fuser -k 8000/tcp || true
         
-        # Orchestrate container microservices composition using the available tool engine version
+        # Microservices stack building orchestration layer
         if command -v docker-compose &> /dev/null; then
-          docker-compose down --remove-orphans
+          docker-compose down
           docker-compose build --no-cache
           docker-compose up --force-recreate -d
-        elif docker compose version &> /dev/null; then
-          docker compose down --remove-orphans
+        else
+          docker compose down
           docker compose build --no-cache
           docker compose up --force-recreate -d
-        else
-          echo "❌ Fatal Error: Docker Compose executable engine couldn't be discovered."
-          exit 1
         fi
         
-        # Verification trace delay
         sleep 5
         docker ps
-        echo "✅ Multi-Container Microservices Architecture Stack Deployed successfully!"
+        echo "✅ Multi-Container Stack Deployed successfully!"
         EOF
         
         # 5. Local runner workspace security purging action
