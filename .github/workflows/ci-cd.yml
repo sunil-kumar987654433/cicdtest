@@ -28,10 +28,10 @@ jobs:
         # PYTHONPATH=. ensures the 'src' directory is properly discovered during tests
         PYTHONPATH=. pytest tests/ -v --cov=src --cov-report=term-missing || echo "No tests found, skipping..."
 
-    deploy:
+  deploy:
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/masterone'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/mastertwo'
     
     steps:
     - uses: actions/checkout@v4
