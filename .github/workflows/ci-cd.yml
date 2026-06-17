@@ -2,9 +2,9 @@ name: CI/CD Docker Compose Pipeline
 
 on:
   push:
-    branches: [ main, masterone ] # Trigger execution targeted branch
+    branches: [  mastertwo ] # Trigger execution targeted branch
   pull_request:
-    branches: [ main, masterone ]
+    branches: [  mastertwo ]
 
 jobs:
   test:
