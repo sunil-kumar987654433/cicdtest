@@ -2,9 +2,9 @@ name: CI/CD Docker Compose Pipeline
 
 on:
   push:
-    branches: [  mastertwo ] # Trigger execution targeted branch
+    branches: [ mastertwo ] # Target branch set to mastertwo
   pull_request:
-    branches: [  mastertwo ]
+    branches: [ mastertwo ]
 
 jobs:
   test:
@@ -31,7 +31,7 @@ jobs:
   deploy:
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/mastertwo'
+    if: github.ref == 'refs/heads/mastertwo'
     
     steps:
     - uses: actions/checkout@v4
@@ -52,40 +52,30 @@ jobs:
         # 3. Target directory ensure karein, source code aur hidden .env dono explicit copy karein
         ssh -o StrictHostKeyChecking=no -i private_key.pem ${USER}@${HOST} "mkdir -p /home/${USER}/app"
         scp -o StrictHostKeyChecking=no -i private_key.pem -r ./* ${USER}@${HOST}:/home/${USER}/app/
-        # FIX LAYER: Hidden .env file ko explicit copy kiya taaki scp use miss na kare
         scp -o StrictHostKeyChecking=no -i private_key.pem .env ${USER}@${HOST}:/home/${USER}/app/.env
         
         # 4. Remote EC2 terminal par Docker Compose execute karein
         ssh -o StrictHostKeyChecking=no -i private_key.pem ${USER}@${HOST} << 'EOF'
         set -e
         cd /home/$(whoami)/app
-        
-        # Standalone tool fallback checking layer
-        if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
-          echo "Installing Docker Compose binary tool..."
-          sudo curl -L "https://github.com(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-          sudo chmod +x /usr/local/bin/docker-compose
-        fi
-        
-        # Legacy monolithic cleanup
-        docker stop fastapi-container || true
-        docker rm fastapi-container || true
+
+        # [SPACE ENFORCEMENT]: Har build se pehle space empty karne ke liye purge commands execute karein
+        echo "🧹 Clearing dangling images and system build caches..."
+        docker system prune -af || true
+
+        # Port clearing safety layer
         sudo fuser -k 8000/tcp || true
-        
-        # Microservices stack building orchestration layer
-        if command -v docker-compose &> /dev/null; then
-          docker-compose down
-          docker-compose build --no-cache
-          docker-compose up --force-recreate -d
-        else
-          docker compose down
-          docker compose build --no-cache
-          docker compose up --force-recreate -d
-        fi
-        
+
+        # Fresh multi-container stack deployment using EC2 default native docker compose environment
+        echo "🚀 Rebuilding and launching containers..."
+        docker compose down --remove-orphans || docker compose down || true
+        docker compose build --no-cache
+        docker compose up --force-recreate -d
+
+        # Status check snapshot trace
         sleep 5
         docker ps
-        echo "✅ Multi-Container Stack Deployed successfully!"
+        echo "✅ Multi-Container Stack Deployed successfully with disk optimization!"
         EOF
         
         # 5. Local runner workspace security purging action
