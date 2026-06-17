@@ -1,86 +1,48 @@
-version: '3.8'
-
 services:
-  # postgres-db:
-  #   image: postgres:16-alpine
-  #   container_name: postgres_container
-  #   restart: always
-  #   env_file: [.env]
-  #   ports: ["5432:5432"]
-  #   volumes:
-  #     - postgres_data:/var/lib/postgresql/data
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "pg_isready -U myuser -d fastdb"]
-  #     interval: 5s
-  #     timeout: 5s
-  #     retries: 5
-
+  # 1. Redis Cache & Broker Service
   redis-broker:
     image: redis:7-alpine
     container_name: redis_container
     restart: always
-    ports: ["6379:6379"]
+    # FIX LAYER: Host mode connectivity for stable networking namespaces
+    network_mode: "host"
     volumes:
       - redis_data:/data
-    networks:
-      - fastapi_network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  # 🚀 FastAPI Service
+  # 2. FastAPI Web Application
   web-app:
     build: .
     container_name: fastapi_container
     restart: always
-    ports: ["8000:8000"]
-    command: ["web"] # Script me "web" section trigger hoga
+    network_mode: "host" # Container direct host routing use karega
     env_file: [.env]
-    networks:
-      - fastapi_network
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
     depends_on:
-      # postgres-db: { condition: service_healthy }
       redis-broker: { condition: service_healthy }
 
-  # 🚀 Celery Worker Service
+  # 3. Celery Worker Service
   celery-worker:
     build: .
     container_name: celery_worker_container
     restart: always
-    command: ["worker"] # Script me "worker" section trigger hoga
+    network_mode: "host" # Direct server system connection trace use karega
     env_file: [.env]
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
-    networks:
-      - fastapi_network
     depends_on:
-      # postgres-db: { condition: service_healthy }
       redis-broker: { condition: service_healthy }
 
-  # 🚀 Celery Beat Service
+  # 4. Celery Beat Service
   # celery-beat:
   #   build: .
   #   container_name: celery_beat_container
   #   restart: always
-  #   command: ["beat"] # Script me "beat" section trigger hoga
+  #   network_mode: "host"
   #   env_file: [.env]
   #   depends_on:
-  #     postgres-db: { condition: service_healthy }
   #     redis-broker: { condition: service_healthy }
 
-
-
-networks:
-  fastapi_network:
-    driver: bridge
-
-    
 volumes:
-  # postgres_data:
   redis_data:
