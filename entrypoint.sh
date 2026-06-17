@@ -1,21 +1,18 @@
 #!/bin/bash
 set -e
 
-# Agar command "web" hai to FastAPI start karein
+# 1. Condition for FastAPI Web execution
 if [ "$1" = "web" ]; then
     echo "Starting FastAPI Application..."
     exec uvicorn src:app --host 0.0.0.0 --port 8000
 
-
-
-# Agar command "worker" hai to Celery Worker start karein
+# 2. Condition for Celery Background Worker (Syntax branching logic fixed)
 elif [ "$1" = "worker" ]; then
     echo "Starting Celery Worker..."
     exec celery -A src.celery worker --concurrency=1 --loglevel=info
 
-
-
-# Agar koi matched command nahi mili to pass-through run karein
+# 3. Fallback conditional capture
 else
+    echo "No matching command found, running pass-through execution for: $@"
     exec "$@"
 fi
