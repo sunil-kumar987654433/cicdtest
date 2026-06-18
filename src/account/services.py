@@ -48,7 +48,6 @@ class GenerateJWTToken:
     
     @classmethod
     def verify_token(cls, token: str)->bool:
-        print("str---------------", token)
         try:
             return jwt.decode(token, key=Config.JWT_SECRET.get_secret_value(), algorithms=[Config.JWT_ALGORITHAM.get_secret_value()])
         except jwt.PyJWTError as e:
@@ -78,6 +77,12 @@ class UserService:
         result = await session.execute(statement)
         return result.scalar_one_or_none()
     
+    async def FetchUser(self, session: AsyncSession):
+        statement = select(User)
+        result = await session.execute(statement)
+        return result.scalars().fetchall()
+        
+    
     async def check_user_blacklist(self, jti: str, session: AsyncSession):
         statement = select(UserBlackListToken).where(UserBlackListToken.jti_token == jti)
         result = await session.execute(statement)
@@ -90,15 +95,12 @@ class UserService:
     
     async def SigninUser(self, data: UserLogin, session: AsyncSession):
         user = await self.get_user_by_email_key(email=data.email, session=session)
-        print("user============", user)
         if user is None:
             raise HTTPException(
                 detail="Invalid user or password",
                 status_code=status.HTTP_400_BAD_REQUEST
             )
         is_password_match =  UserPassword.verify_password(data.password, user.hashed_password)
-        print("is_password_match===============", is_password_match)
-        print("===================",type(Config.JWT_ALGORITHAM.get_secret_value()), '===========', Config.JWT_ALGORITHAM.get_secret_value())
         if is_password_match is False:
             raise HTTPException(
                 detail="Invalid user or password",

@@ -1,9 +1,12 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import StrictStr, SecretStr
+from pydantic import  SecretStr
+
+
 
 
 class Settings(BaseSettings):
     DATABASE_URL: str
+    SYNC_DATABASE_URL: str
     REDIS_HOST: str
     REDIS_PORT: int
     CELERY_BROKER_URL: str
