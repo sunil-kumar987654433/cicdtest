@@ -7,3 +7,6 @@ oldcicd1
 oldcicd2
 .env
 
+.env.docker
+.env.local
+docker.docker-compose.docker.yml

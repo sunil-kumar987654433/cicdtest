@@ -1,8 +1,10 @@
 from fastapi.security import HTTPBearer
 from fastapi import Request, HTTPException, status
+from sqlalchemy import select
+from src.account.models import UserBlackListToken
 from src.account.services import GenerateJWTToken, UserService
 from src.redis import token_in_blacklist
-
+from src.db.database import async_session
 class TokenBearer(HTTPBearer):
     
     def __init__(self, *, bearerFormat = None, scheme_name = None, description = None, auto_error = True):
@@ -28,14 +30,14 @@ class TokenBearer(HTTPBearer):
                 },
                 status_code=status.HTTP_403_FORBIDDEN
             )
-        self.verify_token_data(token_details)
+        await self.verify_token_data(token_details)
         # return token_details
         return {
             "token_detail": token_details,
             "token": token
         }
 
-    def verify_token_data(self, token_details: dict):
+    async def verify_token_data(self, token_details: dict):
         raise NotImplemented("Please override this method")
         
 
@@ -43,7 +45,7 @@ class TokenBearer(HTTPBearer):
         return True if GenerateJWTToken.verify_token(token) is not None else False
     
 class AccessTokenBearer(TokenBearer):
-    def verify_token_data(self, token_details)->dict:
+    async def verify_token_data(self, token_details)->dict:
         print("token_details==AccessTokenBearer===\n\n", token_details)
         if token_details and token_details.get("type") != "access":
             raise HTTPException(
@@ -52,11 +54,25 @@ class AccessTokenBearer(TokenBearer):
             )
         
 class RefreshTokenBearer(TokenBearer):
-    def verify_token_data(self, token_details)->dict:
+    async def verify_token_data(self, token_details)->dict:
         if token_details and token_details.get("type") != "refresh":
             raise HTTPException(
                 detail="Not a valid refresh token.",
                 status_code=status.HTTP_403_FORBIDDEN
             )
-
+        
+        jti = token_details['jti']
+        async with async_session() as session:
+            statement = select(UserBlackListToken).where(UserBlackListToken.jti_token == jti)
+            result = await session.execute(statement)
+            resonse = result.scalar_one_or_none()
+            if resonse:
+                raise HTTPException(
+                    detail={
+                        "error": "This token is invalid or has been invoked.",
+                        'resolution': "Please Login again."
+                    },
+                    status_code=status.HTTP_403_FORBIDDEN
+                )
+            
         

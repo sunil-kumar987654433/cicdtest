@@ -2,7 +2,7 @@ import redis.asyncio as aioredis
 from src.config import Config
 
 
-JTI_TOKEN_EXPIRY = 3600
+JTI_TOKEN_EXPIRY = 150
 
 redis_client = aioredis.Redis(
     host=Config.REDIS_HOST, 
