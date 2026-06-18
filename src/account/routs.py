@@ -32,6 +32,11 @@ async def get_current_user(token_detail_data: dict =Depends(access_token_bearer)
     return user
     
 
+@account_router.get("/all-user", response_model=list[UserResponse])
+async def all_user(session: AsyncSession= Depends(get_session)):
+    return await user_service.FetchUser(session)
+    
+
 @account_router.post("/create-user", response_model=UserResponse)
 async def create_user(data: UserCreate, session: AsyncSession= Depends(get_session)):
     result =  await user_service.CreateUser(data, session)
@@ -52,7 +57,6 @@ async def me(current_user = Depends(get_current_user), session: AsyncSession= De
 
 @account_router.get("/refresh-token")
 async def refresh_token(token_data = Depends(refresh_token_bearer), session: AsyncSession= Depends(get_session)):
-    print("refresh_token===", token_data)
     user_uuid = token_data['token_detail']["user"]['sub']
     jti = token_data['token_detail']['jti']
     data={"user":{
@@ -72,7 +76,6 @@ async def revoke(
     jti = access_token_data['jti']
     result = await add_jti_to_blocklist(jti)
     user_uid = access_token_data['user']['sub']
-    print("logout result---", result)
     logout_user.delay(
         user_uid, 
         jti

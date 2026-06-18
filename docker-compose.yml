@@ -1,12 +1,16 @@
 services:
+
+
   # 1. Redis Cache & Broker Service
   redis-broker:
     image: redis:7-alpine
     container_name: redis_container
     restart: always
-    network_mode: "host"
+    env_file: [.env]
     volumes:
       - redis_data:/data
+    networks:
+      - fastapi_network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -18,9 +22,11 @@ services:
     build: .
     container_name: fastapi_container
     restart: always
-    network_mode: "host"
-    # FIX LAYER: Explicit command allocation defined
     command: ["web"] 
+    networks:
+      - fastapi_network
+    ports:
+      - "8000:8000"
     env_file: [.env]
     depends_on:
       redis-broker: { condition: service_healthy }
@@ -30,12 +36,19 @@ services:
     build: .
     container_name: celery_worker_container
     restart: always
-    network_mode: "host"
-    # FIX LAYER: String variable execution syntax explicitly synchronized
+    networks:
+      - fastapi_network
     command: ["worker"]
     env_file: [.env]
     depends_on:
       redis-broker: { condition: service_healthy }
+      
+
 
 volumes:
   redis_data:
+
+  
+networks:
+  fastapi_network:
+    driver: bridge

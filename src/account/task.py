@@ -2,20 +2,23 @@ import asyncio
 from src.celery import celery_app
 from src.account.models import UserBlackListToken
 from pydantic import EmailStr
-from src.db.database import async_session
+from src.db.database import SessionLocal
 
 @celery_app.task
 def logout_user(user_uid, jti):
-    async def _run():
-        async with async_session() as session:
-            instance = UserBlackListToken(
-                user_uid=user_uid,
-                jti_token=jti
-            )
-            session.add(instance)
-            await session.commit()
-            await session.refresh(instance)
-    asyncio.run(_run())
+    session = SessionLocal()
+    try:
+        instance = UserBlackListToken(
+            user_uid=user_uid,
+            jti_token=jti
+        )
+        session.add(instance)
+        session.commit()
+    finally:
+        # pass
+        session.close()
+
+
     
 
 @celery_app.task
