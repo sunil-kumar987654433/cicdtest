@@ -38,16 +38,15 @@ jobs:
     
     - name: Deploy via Docker Compose to EC2
       env:
-        SSH_KEY_B64: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
         HOST: ${{ secrets.EC2_HOST }}
         USER: ${{ secrets.EC2_USER }}
+
       run: |
-        # 1. Private key decode aur permission set karein
-        echo "$SSH_KEY_B64" | base64 -d > private_key.pem
+        echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > private_key.pem
         chmod 600 private_key.pem
         
         # 2. GitHub Secret se real .env file generate karein
-        echo "${{ secrets.PROD_ENV }}" > .env
+        printf '%s' "${{ secrets.PROD_ENV }}" > .env
         
         # 3. Target directory ensure karein, source code aur hidden .env dono explicit copy karein
         ssh -o StrictHostKeyChecking=no -i private_key.pem ${USER}@${HOST} "mkdir -p /home/${USER}/app"
